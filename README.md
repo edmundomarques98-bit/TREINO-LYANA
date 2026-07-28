@@ -5,8 +5,9 @@ Site estático e responsivo para registrar musculação, corrida, descanso, recu
 ## Recursos
 
 - Plano de 6 semanas.
-- Registro de carga, repetições e RPE por exercício.
-- Cronômetro de descanso entre séries.
+- Registro individual de carga, repetições, RPE e conclusão de cada série.
+- Contador de séries concluídas por exercício.
+- Cronômetro automático após cada série, com pausa, ajuste, reinício, alerta sonoro e vibração.
 - Corridas A e B com progressão semanal.
 - Agenda com “Fiz” e “Descansei”.
 - Check-in de sono, energia, dores e estresse.

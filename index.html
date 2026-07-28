@@ -230,11 +230,16 @@
     <form method="dialog" class="timer-box">
       <p class="eyebrow">DESCANSO ENTRE SÉRIES</p>
       <h2 id="timerExercise">Descanso</h2>
-      <div id="timerValue" class="timer-value">01:30</div>
+      <p id="timerSetProgress" class="timer-set-progress">Marque uma série para iniciar</p>
+      <div id="timerValue" class="timer-value" aria-live="polite">01:30</div>
+      <div class="timer-progress-track" aria-hidden="true">
+        <div id="timerProgressBar" class="timer-progress-bar"></div>
+      </div>
       <div class="timer-controls">
         <button type="button" id="minusTimer" class="ghost-btn">−15 s</button>
         <button type="button" id="pauseTimer" class="secondary-btn">Pausar</button>
         <button type="button" id="plusTimer" class="ghost-btn">+15 s</button>
+        <button type="button" id="resetTimer" class="ghost-btn">Reiniciar</button>
       </div>
       <button class="primary-btn">Fechar</button>
     </form>

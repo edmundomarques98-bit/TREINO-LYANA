@@ -164,6 +164,7 @@ function bindControls() {
 
   $("#minusTimer").addEventListener("click", () => adjustTimer(-15));
   $("#plusTimer").addEventListener("click", () => adjustTimer(15));
+  $("#resetTimer").addEventListener("click", resetTimer);
   $("#pauseTimer").addEventListener("click", pauseTimer);
 }
 
@@ -171,17 +172,32 @@ function renderStats() {
   const weekPrefix = `${state.week}|`;
   const doneDays = Object.entries(state.agenda).filter(([k,v]) => k.startsWith(weekPrefix) && v === "done").length;
   const restDays = Object.entries(state.agenda).filter(([k,v]) => k.startsWith(weekPrefix) && v === "rest").length;
-  const exerciseEntries = Object.entries(state.exercises).filter(([k]) => k.startsWith(weekPrefix));
-  const completedExercises = exerciseEntries.filter(([,v]) => v.done).length;
-  const totalPlanned = PLAN.workouts.reduce((a,w) => a + w.exercises.length, 0);
-  const runs = Object.entries(state.runs).filter(([k]) => k.startsWith(weekPrefix) && k.endsWith("|done") && k);
+
+  let totalPlannedSets = 0;
+  let completedSets = 0;
+
+  PLAN.workouts.forEach(workout => {
+    workout.exercises.forEach((exercise, exerciseIndex) => {
+      const [name, prescribedSets] = exercise;
+      const count = Number(effectiveSets(prescribedSets, name));
+      totalPlannedSets += count;
+
+      const log = state.exercises[key(state.week, workout.id, exerciseIndex)];
+      if (Array.isArray(log?.sets)) {
+        completedSets += log.sets.filter(set => set.done).length;
+      } else if (log?.done) {
+        completedSets += count;
+      }
+    });
+  });
+
   const runDone = ["A","B"].filter(type => state.runs[key(state.week,type,"done")]).length;
   $("#stats").innerHTML = [
     [doneDays, "dias concluídos"],
-    [completedExercises + "/" + totalPlanned, "exercícios marcados"],
-    [runDone + "/2", "corridas concluídas"],
+    [`${completedSets}/${totalPlannedSets}`, "séries concluídas"],
+    [`${runDone}/2`, "corridas concluídas"],
     [restDays, "dias de descanso"]
-  ].map(([v,l]) => `<article class="stat"><strong>${v}</strong><span>${l}</span></article>`).join("");
+  ].map(([value,label]) => `<article class="stat"><strong>${value}</strong><span>${label}</span></article>`).join("");
 }
 
 function renderAgenda() {
@@ -210,42 +226,134 @@ function effectiveSets(prescribed, exerciseName) {
   return prescribed;
 }
 
+function getExerciseLog(storageKey, setCount) {
+  let log = state.exercises[storageKey] || {};
+
+  if (!Array.isArray(log.sets)) {
+    const old = log;
+    log = {
+      sets: Array.from({ length: setCount }, (_, index) => ({
+        load: index === 0 ? (old.load || "") : "",
+        reps: index === 0 ? (old.reps || "") : "",
+        rpe: index === 0 ? (old.rpe || "") : "",
+        done: index === 0 ? Boolean(old.done) : false
+      })),
+      date: old.date || ""
+    };
+  }
+
+  while (log.sets.length < setCount) {
+    log.sets.push({ load: "", reps: "", rpe: "", done: false });
+  }
+  if (log.sets.length > setCount) log.sets = log.sets.slice(0, setCount);
+
+  log.done = log.sets.length > 0 && log.sets.every(set => set.done);
+  state.exercises[storageKey] = log;
+  return log;
+}
+
+function getRestSeconds(restText) {
+  const values = String(restText).match(/\d+/g)?.map(Number) || [60];
+  return values[values.length - 1];
+}
+
 function renderWorkout() {
   const workout = PLAN.workouts.find(w => w.id === $("#workoutSelect").value) || PLAN.workouts[0];
-  $("#workoutIntro").innerHTML = `<strong>${workout.day} — ${workout.title}.</strong> ${workout.intro}`;
+  $("#workoutIntro").innerHTML = `<strong>${workout.day} — ${workout.title}.</strong> ${workout.intro} Marque cada série individualmente; o descanso começa automaticamente após cada série, exceto a última.`;
+
   const sessionK = key(state.week, workout.id);
   $("#sessionNotes").value = state.sessions[sessionK]?.notes || "";
 
-  $("#exerciseList").innerHTML = workout.exercises.map((e, i) => {
-    const [name, sets, reps, rpe, rest] = e;
-    const k = key(state.week, workout.id, i);
-    const log = state.exercises[k] || {};
-    return `<article class="exercise-card ${log.done ? "done" : ""}" data-exercise-key="${k}">
-      <div class="exercise-title">
-        <h3>${i+1}. ${name}</h3>
-        <p>${effectiveSets(sets,name)} séries • ${reps} • RPE ${rpe} • descanso ${rest} s</p>
+  $("#exerciseList").innerHTML = workout.exercises.map((exercise, exerciseIndex) => {
+    const [name, prescribedSets, reps, rpe, rest] = exercise;
+    const setCount = Number(effectiveSets(prescribedSets, name));
+    const exerciseKey = key(state.week, workout.id, exerciseIndex);
+    const log = getExerciseLog(exerciseKey, setCount);
+    const completed = log.sets.filter(set => set.done).length;
+    const restSeconds = getRestSeconds(rest);
+
+    const setRows = log.sets.map((set, setIndex) => `
+      <div class="set-row ${set.done ? "set-complete" : ""}" data-set-index="${setIndex}">
+        <span class="set-number">Série ${setIndex + 1}</span>
+        <input data-prop="load" data-set-index="${setIndex}" type="number" min="0" step="0.5"
+          inputmode="decimal" value="${escapeHTML(set.load || "")}" placeholder="Carga">
+        <input data-prop="reps" data-set-index="${setIndex}" type="text"
+          value="${escapeHTML(set.reps || "")}" placeholder="${escapeHTML(reps)}">
+        <input data-prop="rpe" data-set-index="${setIndex}" type="number" min="1" max="10" step="0.5"
+          value="${escapeHTML(set.rpe || "")}" placeholder="${escapeHTML(rpe)}">
+        <label class="set-check">
+          <input data-prop="done" data-set-index="${setIndex}" type="checkbox" ${set.done ? "checked" : ""}>
+          Concluída
+        </label>
+        <button type="button" class="set-timer-btn"
+          data-name="${escapeHTML(name)}"
+          data-seconds="${restSeconds}"
+          data-completed-set="${setIndex + 1}"
+          data-total-sets="${setCount}">⏱ ${rest}s</button>
       </div>
-      <label class="field"><span>Carga (kg)</span><input data-prop="load" type="number" step="0.5" value="${escapeHTML(log.load||"")}"></label>
-      <label class="field"><span>Reps feitas</span><input data-prop="reps" type="text" value="${escapeHTML(log.reps||"")}" placeholder="${reps}"></label>
-      <label class="field"><span>RPE real</span><input data-prop="rpe" type="number" min="1" max="10" step="0.5" value="${escapeHTML(log.rpe||"")}"></label>
-      <button class="timer-btn" data-name="${escapeHTML(name)}" data-seconds="${parseInt(rest.split("–").pop())}">⏱ ${rest}s</button>
-      <label class="check-wrap"><input data-prop="done" type="checkbox" ${log.done?"checked":""}> Feito</label>
+    `).join("");
+
+    return `<article class="exercise-card ${log.done ? "done" : ""}" data-exercise-key="${exerciseKey}">
+      <div class="exercise-card-head">
+        <div class="exercise-title">
+          <h3>${exerciseIndex + 1}. ${name}</h3>
+          <p>${setCount} séries • ${reps} • RPE previsto ${rpe} • descanso ${rest} s</p>
+        </div>
+        <span class="series-counter">${completed}/${setCount} séries</span>
+      </div>
+      <div class="set-list">
+        <div class="set-row set-header" aria-hidden="true">
+          <span>Série</span><span>Carga</span><span>Repetições</span><span>RPE real</span><span>Status</span><span>Descanso</span>
+        </div>
+        ${setRows}
+      </div>
     </article>`;
   }).join("");
 
-  $$(".exercise-card input").forEach(input => {
+  $$(".exercise-card input[data-prop]").forEach(input => {
     input.addEventListener("change", () => {
       const card = input.closest(".exercise-card");
-      const k = card.dataset.exerciseKey;
-      state.exercises[k] ||= {};
-      state.exercises[k][input.dataset.prop] = input.type === "checkbox" ? input.checked : input.value;
-      state.exercises[k].date = todayISO();
+      const exerciseKey = card.dataset.exerciseKey;
+      const exerciseIndex = [...$("#exerciseList").children].indexOf(card);
+      const exercise = workout.exercises[exerciseIndex];
+      const [exerciseName, prescribedSets, , , rest] = exercise;
+      const setCount = Number(effectiveSets(prescribedSets, exerciseName));
+      const setIndex = Number(input.dataset.setIndex);
+      const log = getExerciseLog(exerciseKey, setCount);
+      const set = log.sets[setIndex];
+
+      set[input.dataset.prop] = input.type === "checkbox" ? input.checked : input.value;
+      if (input.type === "checkbox") {
+        set.completedAt = input.checked ? new Date().toISOString() : "";
+      }
+
+      log.date = todayISO();
+      log.done = log.sets.every(item => item.done);
+      state.exercises[exerciseKey] = log;
       saveState();
-      card.classList.toggle("done", !!state.exercises[k].done);
+
+      input.closest(".set-row").classList.toggle("set-complete", Boolean(set.done));
+      card.classList.toggle("done", log.done);
+      card.querySelector(".series-counter").textContent =
+        `${log.sets.filter(item => item.done).length}/${setCount} séries`;
+
+      if (input.dataset.prop === "done" && input.checked && setIndex < setCount - 1) {
+        startTimer(exerciseName, getRestSeconds(rest), setIndex + 1, setCount);
+      }
+
+      renderStats();
       renderProgressCharts();
     });
   });
-  $$(".timer-btn").forEach(btn => btn.addEventListener("click", () => startTimer(btn.dataset.name, Number(btn.dataset.seconds))));
+
+  $$(".set-timer-btn").forEach(button => button.addEventListener("click", () => {
+    startTimer(
+      button.dataset.name,
+      Number(button.dataset.seconds),
+      Number(button.dataset.completedSet),
+      Number(button.dataset.totalSets)
+    );
+  }));
 }
 
 function saveSessionNotes() {
@@ -357,7 +465,12 @@ function renderProgressCharts() {
     if (e[0] !== exercise) return;
     for (let week=1; week<=6; week++) {
       const log = state.exercises[key(week,w.id,i)];
-      if (log?.load) points.push({label:`S${week}`, value:Number(log.load)});
+      if (Array.isArray(log?.sets)) {
+        const loads = log.sets.map(set => Number(set.load)).filter(value => value > 0);
+        if (loads.length) points.push({label:`S${week}`, value:Math.max(...loads)});
+      } else if (log?.load) {
+        points.push({label:`S${week}`, value:Number(log.load)});
+      }
     }
   }));
   $("#strengthChart").innerHTML = svgLine(points, "kg");
@@ -387,25 +500,116 @@ function svgLine(points, unit) {
   </svg>`;
 }
 
-let timerSeconds=0, timerId=null, timerRunning=false;
-function startTimer(name, seconds) {
-  timerSeconds=seconds; $("#timerExercise").textContent=name; updateTimerDisplay();
-  $("#timerDialog").showModal(); timerRunning=true; $("#pauseTimer").textContent="Pausar";
-  clearInterval(timerId); timerId=setInterval(tickTimer,1000);
+let timerSeconds = 0;
+let timerInitialSeconds = 0;
+let timerId = null;
+let timerRunning = false;
+let timerContext = { completedSet: null, totalSets: null };
+
+function startTimer(name, seconds, completedSet = null, totalSets = null) {
+  timerSeconds = Math.max(0, Number(seconds) || 60);
+  timerInitialSeconds = timerSeconds;
+  timerContext = { completedSet, totalSets };
+
+  $("#timerExercise").textContent = name;
+  $("#timerSetProgress").textContent = completedSet && totalSets
+    ? (completedSet < totalSets
+        ? `Série ${completedSet} de ${totalSets} concluída • próxima: série ${completedSet + 1}`
+        : `Série ${completedSet} de ${totalSets} concluída • exercício finalizado`)
+    : "Descanso manual";
+  $("#timerDialog").classList.remove("timer-finished");
+
+  updateTimerDisplay();
+  if (!$("#timerDialog").open) $("#timerDialog").showModal();
+
+  timerRunning = true;
+  $("#pauseTimer").textContent = "Pausar";
+  clearInterval(timerId);
+  timerId = setInterval(tickTimer, 1000);
 }
+
 function tickTimer() {
   if (!timerRunning) return;
-  timerSeconds=Math.max(0,timerSeconds-1); updateTimerDisplay();
-  if (timerSeconds===0) { clearInterval(timerId); timerRunning=false; $("#pauseTimer").textContent="Reiniciar"; navigator.vibrate?.([200,100,200]); }
+  timerSeconds = Math.max(0, timerSeconds - 1);
+  updateTimerDisplay();
+
+  if (timerSeconds === 0) {
+    clearInterval(timerId);
+    timerId = null;
+    timerRunning = false;
+    $("#pauseTimer").textContent = "Reiniciar";
+    $("#timerDialog").classList.add("timer-finished");
+    $("#timerSetProgress").textContent = timerContext.completedSet && timerContext.totalSets
+      ? (timerContext.completedSet < timerContext.totalSets
+          ? `Descanso concluído • pronta para a série ${timerContext.completedSet + 1}`
+          : "Descanso concluído • exercício finalizado")
+      : "Descanso concluído";
+    document.title = "Meu Treino — 6 semanas";
+    notifyTimerFinished();
+  }
 }
+
 function updateTimerDisplay() {
-  $("#timerValue").textContent=`${String(Math.floor(timerSeconds/60)).padStart(2,"0")}:${String(timerSeconds%60).padStart(2,"0")}`;
+  $("#timerValue").textContent =
+    `${String(Math.floor(timerSeconds / 60)).padStart(2,"0")}:${String(timerSeconds % 60).padStart(2,"0")}`;
+
+  const percent = timerInitialSeconds > 0 ? (timerSeconds / timerInitialSeconds) * 100 : 0;
+  $("#timerProgressBar").style.width = `${Math.max(0, Math.min(100, percent))}%`;
+  document.title = timerRunning
+    ? `${$("#timerValue").textContent} — descanso`
+    : "Meu Treino — 6 semanas";
 }
-function adjustTimer(n) { timerSeconds=Math.max(0,timerSeconds+n); updateTimerDisplay(); }
+
+function adjustTimer(amount) {
+  timerSeconds = Math.max(0, timerSeconds + amount);
+  timerInitialSeconds = Math.max(timerInitialSeconds, timerSeconds);
+  $("#timerDialog").classList.remove("timer-finished");
+  updateTimerDisplay();
+}
+
 function pauseTimer() {
-  timerRunning=!timerRunning;
-  $("#pauseTimer").textContent=timerRunning?"Pausar":"Continuar";
-  if (timerRunning && !timerId) timerId=setInterval(tickTimer,1000);
+  if (timerSeconds === 0) {
+    resetTimer();
+    timerRunning = true;
+    $("#pauseTimer").textContent = "Pausar";
+    clearInterval(timerId);
+    timerId = setInterval(tickTimer, 1000);
+    return;
+  }
+
+  timerRunning = !timerRunning;
+  $("#pauseTimer").textContent = timerRunning ? "Pausar" : "Continuar";
+  if (timerRunning && !timerId) timerId = setInterval(tickTimer, 1000);
+}
+
+function resetTimer() {
+  timerSeconds = timerInitialSeconds || 60;
+  timerRunning = false;
+  clearInterval(timerId);
+  timerId = null;
+  $("#pauseTimer").textContent = "Continuar";
+  $("#timerDialog").classList.remove("timer-finished");
+  updateTimerDisplay();
+}
+
+function notifyTimerFinished() {
+  navigator.vibrate?.([250, 120, 250]);
+
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    const audio = new AudioContextClass();
+    const oscillator = audio.createOscillator();
+    const gain = audio.createGain();
+    oscillator.connect(gain);
+    gain.connect(audio.destination);
+    oscillator.frequency.value = 880;
+    gain.gain.setValueAtTime(0.12, audio.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.45);
+    oscillator.start();
+    oscillator.stop(audio.currentTime + 0.45);
+  } catch (_) {
+    // O alerta visual e a vibração continuam funcionando.
+  }
 }
 
 function resetWeek() {
