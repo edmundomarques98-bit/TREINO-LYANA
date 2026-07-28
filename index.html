@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#17324d" />
+  <meta name="description" content="Painel de 6 semanas para acompanhar musculação, corrida, descanso e evolução." />
+  <title>Meu Treino — 6 semanas</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">PLANO DE 6 SEMANAS</p>
+      <h1>Meu treino & evolução</h1>
+      <p class="subtitle">Musculação, corrida, descanso e recuperação em um só lugar.</p>
+    </div>
+    <button id="themeBtn" class="icon-btn" aria-label="Alternar tema" title="Alternar tema">◐</button>
+  </header>
+
+  <main class="shell">
+    <section class="hero card">
+      <div>
+        <span class="pill">Semana atual</span>
+        <h2 id="weekTitle">Semana 1</h2>
+        <p id="weekStrategy"></p>
+      </div>
+      <label class="field compact">
+        <span>Selecionar semana</span>
+        <select id="weekSelect" aria-label="Selecionar semana">
+          <option value="1">Semana 1</option>
+          <option value="2">Semana 2</option>
+          <option value="3">Semana 3</option>
+          <option value="4">Semana 4</option>
+          <option value="5">Semana 5</option>
+          <option value="6">Semana 6</option>
+        </select>
+      </label>
+    </section>
+
+    <section id="stats" class="stats-grid" aria-label="Resumo de progresso"></section>
+
+    <nav class="tabs" aria-label="Seções">
+      <button class="tab active" data-tab="agenda">Agenda</button>
+      <button class="tab" data-tab="treino">Treino</button>
+      <button class="tab" data-tab="corrida">Corrida</button>
+      <button class="tab" data-tab="recuperacao">Recuperação</button>
+      <button class="tab" data-tab="evolucao">Evolução</button>
+      <button class="tab" data-tab="dados">Dados</button>
+    </nav>
+
+    <section id="agenda" class="tab-panel active">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">VISÃO SEMANAL</p>
+          <h2>Agenda</h2>
+        </div>
+        <button id="resetWeekBtn" class="ghost-btn">Limpar semana</button>
+      </div>
+      <div id="agendaGrid" class="agenda-grid"></div>
+    </section>
+
+    <section id="treino" class="tab-panel">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">REGISTRO DA SESSÃO</p>
+          <h2>Musculação</h2>
+        </div>
+        <label class="field compact">
+          <span>Escolher treino</span>
+          <select id="workoutSelect"></select>
+        </label>
+      </div>
+      <div id="workoutIntro" class="note"></div>
+      <div id="exerciseList" class="exercise-list"></div>
+      <div class="session-footer card">
+        <label class="field">
+          <span>Observações da sessão</span>
+          <textarea id="sessionNotes" rows="3" placeholder="Técnica, desconforto, sensação, ajustes..."></textarea>
+        </label>
+        <div class="footer-actions">
+          <button id="completeWorkoutBtn" class="primary-btn">Concluir treino</button>
+          <button id="skipWorkoutBtn" class="ghost-btn">Marcar como não realizado</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="corrida" class="tab-panel">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">RESISTÊNCIA AERÓBICA</p>
+          <h2>Corridas da semana</h2>
+        </div>
+      </div>
+      <div id="runCards" class="run-grid"></div>
+      <div class="card calculator-card">
+        <div>
+          <p class="eyebrow">CALCULADORA</p>
+          <h3>Ritmo médio</h3>
+        </div>
+        <div class="form-grid">
+          <label class="field">
+            <span>Distância (km)</span>
+            <input id="paceDistance" type="number" min="0" step="0.01" inputmode="decimal" />
+          </label>
+          <label class="field">
+            <span>Tempo (min)</span>
+            <input id="paceMinutes" type="number" min="0" step="0.1" inputmode="decimal" />
+          </label>
+          <div class="result-box">
+            <span>Ritmo</span>
+            <strong id="paceResult">—</strong>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="recuperacao" class="tab-panel">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">CHECK-IN DIÁRIO</p>
+          <h2>Recuperação e descanso</h2>
+        </div>
+      </div>
+      <div class="card">
+        <div class="form-grid three">
+          <label class="field">
+            <span>Data</span>
+            <input id="recoveryDate" type="date" />
+          </label>
+          <label class="field">
+            <span>Sono (1–10)</span>
+            <input id="sleepScore" type="range" min="1" max="10" value="7" />
+            <output id="sleepOut">7</output>
+          </label>
+          <label class="field">
+            <span>Energia (1–10)</span>
+            <input id="energyScore" type="range" min="1" max="10" value="7" />
+            <output id="energyOut">7</output>
+          </label>
+          <label class="field">
+            <span>Dor muscular (1–10)</span>
+            <input id="sorenessScore" type="range" min="1" max="10" value="3" />
+            <output id="sorenessOut">3</output>
+          </label>
+          <label class="field">
+            <span>Dor articular (0–10)</span>
+            <input id="jointPainScore" type="range" min="0" max="10" value="0" />
+            <output id="jointPainOut">0</output>
+          </label>
+          <label class="field">
+            <span>Estresse (1–10)</span>
+            <input id="stressScore" type="range" min="1" max="10" value="4" />
+            <output id="stressOut">4</output>
+          </label>
+        </div>
+        <label class="field">
+          <span>Notas</span>
+          <textarea id="recoveryNotes" rows="3" placeholder="Como o corpo respondeu? Houve dor, cansaço ou sono ruim?"></textarea>
+        </label>
+        <div class="footer-actions">
+          <button id="saveRecoveryBtn" class="primary-btn">Salvar check-in</button>
+          <button id="markRestBtn" class="secondary-btn">Marcar dia de descanso</button>
+        </div>
+      </div>
+      <div id="recoveryHistory" class="history-list"></div>
+    </section>
+
+    <section id="evolucao" class="tab-panel">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">TENDÊNCIAS</p>
+          <h2>Evolução</h2>
+        </div>
+      </div>
+      <div class="chart-grid">
+        <article class="card">
+          <h3>Carga por exercício</h3>
+          <label class="field compact">
+            <span>Exercício</span>
+            <select id="progressExercise"></select>
+          </label>
+          <div id="strengthChart" class="chart" role="img" aria-label="Gráfico de evolução da carga"></div>
+        </article>
+        <article class="card">
+          <h3>Corrida</h3>
+          <div id="runChart" class="chart" role="img" aria-label="Gráfico de evolução da corrida"></div>
+        </article>
+      </div>
+      <div class="card">
+        <h3>Medidas corporais</h3>
+        <div class="form-grid four">
+          <label class="field"><span>Data</span><input id="measureDate" type="date" /></label>
+          <label class="field"><span>Cintura (cm)</span><input id="waist" type="number" step="0.1" /></label>
+          <label class="field"><span>Quadril (cm)</span><input id="hips" type="number" step="0.1" /></label>
+          <label class="field"><span>Coxa (cm)</span><input id="thigh" type="number" step="0.1" /></label>
+        </div>
+        <button id="saveMeasureBtn" class="primary-btn">Salvar medidas</button>
+        <div id="measureTableWrap" class="table-wrap"></div>
+      </div>
+    </section>
+
+    <section id="dados" class="tab-panel">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">BACKUP LOCAL</p>
+          <h2>Dados</h2>
+        </div>
+      </div>
+      <div class="card data-card">
+        <p>Os registros ficam armazenados neste navegador. Exporte um backup para não perder o histórico ao trocar de aparelho ou limpar os dados do navegador.</p>
+        <div class="footer-actions">
+          <button id="exportBtn" class="primary-btn">Exportar backup</button>
+          <label class="secondary-btn file-label">
+            Importar backup
+            <input id="importInput" type="file" accept="application/json" hidden />
+          </label>
+          <button id="eraseBtn" class="danger-btn">Apagar tudo</button>
+        </div>
+      </div>
+      <div class="note">
+        <strong>Privacidade:</strong> este site não envia dados para servidor. Tudo permanece no aparelho, usando o armazenamento local do navegador.
+      </div>
+    </section>
+  </main>
+
+  <dialog id="timerDialog">
+    <form method="dialog" class="timer-box">
+      <p class="eyebrow">DESCANSO ENTRE SÉRIES</p>
+      <h2 id="timerExercise">Descanso</h2>
+      <div id="timerValue" class="timer-value">01:30</div>
+      <div class="timer-controls">
+        <button type="button" id="minusTimer" class="ghost-btn">−15 s</button>
+        <button type="button" id="pauseTimer" class="secondary-btn">Pausar</button>
+        <button type="button" id="plusTimer" class="ghost-btn">+15 s</button>
+      </div>
+      <button class="primary-btn">Fechar</button>
+    </form>
+  </dialog>
+
+  <footer>
+    <p>RPE 7 ≈ cerca de 3 repetições ainda possíveis. Pare diante de dor aguda, tontura, dor no peito ou falta de ar incomum.</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
