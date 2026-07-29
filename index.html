@@ -47,6 +47,7 @@
       <button class="tab" data-tab="treino">Treino</button>
       <button class="tab" data-tab="corrida">Corrida</button>
       <button class="tab" data-tab="recuperacao">Recuperação</button>
+      <button class="tab" data-tab="avaliacao">Avaliação física</button>
       <button class="tab" data-tab="evolucao">Evolução</button>
       <button class="tab" data-tab="dados">Dados</button>
     </nav>
@@ -168,6 +169,127 @@
       <div id="recoveryHistory" class="history-list"></div>
     </section>
 
+
+    <section id="avaliacao" class="tab-panel">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">AVALIAÇÃO COMPLETA</p>
+          <h2>Medidas e fotos de evolução</h2>
+        </div>
+      </div>
+
+      <article class="card measurement-guide">
+        <div class="assessment-head">
+          <div>
+            <p class="eyebrow">COMO MEDIR</p>
+            <h3>Use sempre os mesmos pontos anatômicos</h3>
+            <p>Fita não elástica, paralela ao chão, ajustada sem apertar a pele. Faça duas leituras e repita quando houver diferença grande.</p>
+          </div>
+          <button id="toggleGuideBtn" class="ghost-btn" type="button">Ver guia completo</button>
+        </div>
+        <div id="measurementGuideDetails" class="measurement-guide-details" hidden>
+          <div class="guide-grid">
+            <article><strong>Cintura</strong><p>Meça no ponto médio entre a última costela palpável e o topo do osso do quadril, ao final de uma expiração normal.</p></article>
+            <article><strong>Abdômen</strong><p>Meça na altura do umbigo. É uma medida complementar de acompanhamento; mantenha exatamente o mesmo ponto.</p></article>
+            <article><strong>Quadril</strong><p>Meça a maior circunferência dos glúteos, com os pés juntos e a fita horizontal.</p></article>
+            <article><strong>Braços</strong><p>Meça no meio do caminho entre o ombro e o cotovelo, com o braço relaxado e sem contrair.</p></article>
+            <article><strong>Coxas</strong><p>Meça no ponto médio entre a dobra da virilha e a parte superior da patela, deixando o peso na perna oposta.</p></article>
+            <article><strong>Panturrilhas</strong><p>Procure a maior circunferência da panturrilha e mantenha o músculo relaxado.</p></article>
+            <article><strong>Tórax/busto</strong><p>Medida opcional: use a região de maior circunferência, com a fita horizontal e respiração normal.</p></article>
+            <article><strong>Condições</strong><p>Repita no mesmo horário, antes do treino, com roupas semelhantes e sem puxar a fita para comprimir a pele.</p></article>
+          </div>
+          <p class="guide-sources">
+            Referência de técnica: 
+            <a href="https://iris.who.int/bitstreams/ca408ade-05c9-4b7c-8967-6ee5b5e0ccd8/download" target="_blank" rel="noopener noreferrer">OMS — cintura e quadril</a>
+            e
+            <a href="https://wwwn.cdc.gov/nchs/data/nhanes3/manuals/anthro.pdf" target="_blank" rel="noopener noreferrer">CDC/NHANES — braço, coxa e panturrilha</a>.
+          </p>
+        </div>
+      </article>
+
+      <article class="card body-assessment-form">
+        <div class="assessment-head">
+          <div>
+            <p class="eyebrow">NOVO REGISTRO</p>
+            <h3>Dados corporais</h3>
+            <p>Campos em centímetros, exceto peso. Os lados direito e esquerdo ajudam a acompanhar assimetrias.</p>
+          </div>
+        </div>
+
+        <div class="form-grid four">
+          <label class="field"><span>Data</span><input id="assessmentDate" type="date" /></label>
+          <label class="field"><span>Peso (kg)</span><input id="assessmentWeight" type="number" min="0" step="0.1" inputmode="decimal" /></label>
+          <label class="field"><span>Altura (cm)</span><input id="assessmentHeight" type="number" min="0" step="0.1" inputmode="decimal" /></label>
+          <label class="field"><span>Tórax/busto (cm)</span><input id="assessmentChest" type="number" min="0" step="0.1" inputmode="decimal" /></label>
+
+          <label class="field"><span>Cintura (cm)</span><input id="assessmentWaist" type="number" min="0" step="0.1" inputmode="decimal" /></label>
+          <label class="field"><span>Abdômen/umbigo (cm)</span><input id="assessmentAbdomen" type="number" min="0" step="0.1" inputmode="decimal" /></label>
+          <label class="field"><span>Quadril (cm)</span><input id="assessmentHips" type="number" min="0" step="0.1" inputmode="decimal" /></label>
+          <label class="field"><span>Braço direito (cm)</span><input id="assessmentArmRight" type="number" min="0" step="0.1" inputmode="decimal" /></label>
+
+          <label class="field"><span>Braço esquerdo (cm)</span><input id="assessmentArmLeft" type="number" min="0" step="0.1" inputmode="decimal" /></label>
+          <label class="field"><span>Coxa direita (cm)</span><input id="assessmentThighRight" type="number" min="0" step="0.1" inputmode="decimal" /></label>
+          <label class="field"><span>Coxa esquerda (cm)</span><input id="assessmentThighLeft" type="number" min="0" step="0.1" inputmode="decimal" /></label>
+          <label class="field"><span>Panturrilha direita (cm)</span><input id="assessmentCalfRight" type="number" min="0" step="0.1" inputmode="decimal" /></label>
+
+          <label class="field"><span>Panturrilha esquerda (cm)</span><input id="assessmentCalfLeft" type="number" min="0" step="0.1" inputmode="decimal" /></label>
+        </div>
+
+        <div class="photo-instructions note">
+          <strong>Fotos padronizadas:</strong> frente, perfil e costas; câmera na mesma altura e distância; mesma iluminação, roupa e postura; sem filtros. As imagens ficam somente no banco de dados deste navegador.
+        </div>
+
+        <div class="photo-upload-grid">
+          <label class="photo-upload">
+            <span>Foto de frente</span>
+            <input id="photoFront" type="file" accept="image/*" />
+            <div id="previewFront" class="photo-preview"><span>Nenhuma foto</span></div>
+          </label>
+          <label class="photo-upload">
+            <span>Foto de perfil</span>
+            <input id="photoSide" type="file" accept="image/*" />
+            <div id="previewSide" class="photo-preview"><span>Nenhuma foto</span></div>
+          </label>
+          <label class="photo-upload">
+            <span>Foto de costas</span>
+            <input id="photoBack" type="file" accept="image/*" />
+            <div id="previewBack" class="photo-preview"><span>Nenhuma foto</span></div>
+          </label>
+        </div>
+
+        <label class="field">
+          <span>Observações</span>
+          <textarea id="assessmentNotes" rows="3" placeholder="Ciclo menstrual, retenção, horário, alimentação, sensação corporal ou outra observação relevante..."></textarea>
+        </label>
+
+        <div class="footer-actions">
+          <button id="saveAssessmentBtn" class="primary-btn" type="button">Salvar avaliação completa</button>
+          <button id="clearAssessmentBtn" class="ghost-btn" type="button">Limpar formulário</button>
+        </div>
+      </article>
+
+      <article class="card body-comparison-card">
+        <div class="assessment-head">
+          <div>
+            <p class="eyebrow">COMPARAÇÃO AUTOMÁTICA</p>
+            <h3>Última avaliação versus anterior</h3>
+          </div>
+          <span id="bodyComparisonBadge" class="assessment-badge neutral">Aguardando dados</span>
+        </div>
+        <div id="bodyComparison" class="assessment-content">
+          Salve pelo menos duas avaliações para comparar as medidas.
+        </div>
+      </article>
+
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">HISTÓRICO</p>
+          <h2>Avaliações salvas</h2>
+        </div>
+      </div>
+      <div id="bodyAssessmentHistory" class="body-assessment-history"></div>
+    </section>
+
     <section id="evolucao" class="tab-panel">
       <div class="section-head">
         <div>
@@ -175,6 +297,21 @@
           <h2>Evolução</h2>
         </div>
       </div>
+
+      <article class="card assessment-card">
+        <div class="assessment-head">
+          <div>
+            <p class="eyebrow">ANÁLISE AUTOMÁTICA</p>
+            <h3>Variação de carga e repetições</h3>
+            <p>Compara automaticamente as duas sessões mais recentes do exercício selecionado.</p>
+          </div>
+          <span id="assessmentBadge" class="assessment-badge neutral">Aguardando dados</span>
+        </div>
+        <div id="progressAssessment" class="assessment-content">
+          Registre pelo menos duas sessões completas para gerar uma avaliação.
+        </div>
+      </article>
+
       <div class="chart-grid">
         <article class="card">
           <h3>Carga por exercício</h3>
@@ -209,8 +346,16 @@
           <h2>Dados</h2>
         </div>
       </div>
+      <div class="card database-card">
+        <div>
+          <p class="eyebrow">BANCO DE DADOS</p>
+          <h3>IndexedDB local</h3>
+          <p id="databaseStatus">Inicializando o banco de dados...</p>
+        </div>
+        <span id="databaseIndicator" class="database-indicator">Conectando</span>
+      </div>
       <div class="card data-card">
-        <p>Os registros ficam armazenados neste navegador. Exporte um backup para não perder o histórico ao trocar de aparelho ou limpar os dados do navegador.</p>
+        <p>Os registros são salvos automaticamente no banco de dados deste navegador. Exporte um backup para não perder o histórico ao trocar de aparelho ou limpar os dados do navegador.</p>
         <div class="footer-actions">
           <button id="exportBtn" class="primary-btn">Exportar backup</button>
           <label class="secondary-btn file-label">
@@ -221,7 +366,7 @@
         </div>
       </div>
       <div class="note">
-        <strong>Privacidade:</strong> este site não envia dados para servidor. Tudo permanece no aparelho, usando o armazenamento local do navegador.
+        <strong>Privacidade:</strong> este site não envia dados para servidor. Tudo permanece no aparelho, usando o banco IndexedDB do navegador.
       </div>
     </section>
   </main>

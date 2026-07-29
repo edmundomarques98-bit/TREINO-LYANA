@@ -334,3 +334,288 @@ footer { padding: 30px 20px; text-align: center; color: var(--muted); font-size:
   .set-timer-btn { grid-column: 1 / -1; }
   .timer-controls { flex-wrap: wrap; }
 }
+
+
+/* Banco de dados e avaliação automática */
+.database-card,
+.assessment-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+.database-card {
+  margin-bottom: 14px;
+}
+.database-card h3,
+.assessment-card h3 {
+  margin: 4px 0 5px;
+}
+.database-card p,
+.assessment-head p {
+  margin: 0;
+  color: var(--muted);
+}
+.database-indicator,
+.assessment-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 11px;
+  border-radius: 999px;
+  font-size: .76rem;
+  font-weight: 850;
+  background: var(--surface-2);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+.database-indicator.ready,
+.assessment-badge.positive {
+  background: color-mix(in srgb, var(--success) 14%, var(--surface));
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 35%, var(--line));
+}
+.database-indicator.error,
+.assessment-badge.negative {
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 32%, var(--line));
+}
+.assessment-badge.mixed {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  color: color-mix(in srgb, var(--accent) 82%, var(--text));
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+}
+.assessment-card {
+  margin-bottom: 14px;
+}
+.assessment-content {
+  margin-top: 18px;
+}
+.assessment-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+.assessment-metric {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  padding: 14px;
+}
+.assessment-metric span {
+  display: block;
+  color: var(--muted);
+  font-size: .78rem;
+  font-weight: 750;
+}
+.assessment-metric strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 1.35rem;
+  font-variant-numeric: tabular-nums;
+}
+.assessment-metric small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+}
+.delta-positive { color: var(--success); }
+.delta-negative { color: var(--danger); }
+.delta-neutral { color: var(--muted); }
+.assessment-summary {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-left: 4px solid var(--brand-2);
+  border-radius: 0 14px 14px 0;
+  background: color-mix(in srgb, var(--brand-2) 8%, var(--surface));
+}
+.assessment-summary strong {
+  display: block;
+  margin-bottom: 4px;
+}
+.assessment-history {
+  margin-top: 16px;
+}
+.assessment-history h4 {
+  margin: 0 0 8px;
+}
+.assessment-empty {
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+@media (max-width: 760px) {
+  .database-card,
+  .assessment-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .assessment-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* Avaliação física, medidas e fotos */
+.measurement-guide,
+.body-assessment-form,
+.body-comparison-card {
+  margin-bottom: 14px;
+}
+.measurement-guide-details {
+  margin-top: 18px;
+}
+.guide-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+.guide-grid article {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+}
+.guide-grid strong {
+  display: block;
+  margin-bottom: 4px;
+}
+.guide-grid p {
+  margin: 0;
+  color: var(--muted);
+  font-size: .88rem;
+}
+.photo-instructions {
+  margin-top: 18px;
+}
+.photo-upload-grid,
+.saved-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 16px 0;
+}
+.photo-upload {
+  display: grid;
+  gap: 8px;
+  cursor: pointer;
+}
+.photo-upload > span,
+.saved-photo > span {
+  font-size: .82rem;
+  font-weight: 800;
+  color: var(--muted);
+}
+.photo-upload input {
+  font-size: .82rem;
+}
+.photo-preview,
+.saved-photo-frame {
+  min-height: 230px;
+  border-radius: 16px;
+  border: 1px dashed var(--line);
+  background: var(--surface-2);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+.photo-preview img,
+.saved-photo-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 230px;
+  max-height: 460px;
+  object-fit: cover;
+}
+.body-metrics-grid {
+  grid-template-columns: repeat(4, 1fr);
+}
+.body-assessment-history {
+  display: grid;
+  gap: 14px;
+}
+.body-history-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+.body-history-head h3 {
+  margin: 4px 0;
+}
+.body-history-head p {
+  margin: 0;
+  color: var(--muted);
+}
+.body-measurement-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 9px;
+  margin-top: 16px;
+}
+.body-measurement-summary > div {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+.body-measurement-summary span {
+  display: block;
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 750;
+}
+.body-measurement-summary strong {
+  display: block;
+  margin-top: 3px;
+  font-size: .98rem;
+}
+.saved-photo-frame small {
+  color: var(--muted);
+}
+@media (max-width: 900px) {
+  .body-metrics-grid,
+  .body-measurement-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 700px) {
+  .guide-grid,
+  .photo-upload-grid,
+  .saved-photo-grid {
+    grid-template-columns: 1fr;
+  }
+  .photo-preview,
+  .saved-photo-frame,
+  .photo-preview img,
+  .saved-photo-frame img {
+    min-height: 300px;
+  }
+}
+@media (max-width: 520px) {
+  .body-history-head {
+    flex-direction: column;
+  }
+  .body-history-head .danger-btn {
+    width: 100%;
+  }
+  .body-metrics-grid,
+  .body-measurement-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
+.guide-sources {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: .82rem;
+}
+.guide-sources a {
+  color: var(--brand-2);
+  font-weight: 800;
+}

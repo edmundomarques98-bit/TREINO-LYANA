@@ -68,22 +68,250 @@ const PLAN = {
 };
 
 const STORAGE_KEY = "meuTreino6Semanas-v1";
+const DB_NAME = "TreinoLyanaDB";
+const DB_VERSION = 2;
+const APP_STORE = "appState";
+const SET_STORE = "setLogs";
+const BODY_STORE = "bodyAssessments";
+const PHOTO_STORE = "assessmentPhotos";
+
 const defaultState = {
   week: 1, theme: "light", agenda: {}, exercises: {}, sessions: {},
-  runs: {}, recovery: [], measures: []
+  runs: {}, recovery: [], measures: [], bodyAssessments: []
 };
-let state = loadState();
 
-function loadState() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    return { ...structuredClone(defaultState), ...(saved || {}) };
-  } catch { return structuredClone(defaultState); }
+let state = structuredClone(defaultState);
+let databasePromise = null;
+let saveQueue = Promise.resolve();
+
+function normalizeState(value) {
+  return {
+    ...structuredClone(defaultState),
+    ...(value || {}),
+    agenda: { ...(value?.agenda || {}) },
+    exercises: { ...(value?.exercises || {}) },
+    sessions: { ...(value?.sessions || {}) },
+    runs: { ...(value?.runs || {}) },
+    recovery: Array.isArray(value?.recovery) ? value.recovery : [],
+    measures: Array.isArray(value?.measures) ? value.measures : [],
+    bodyAssessments: Array.isArray(value?.bodyAssessments) ? value.bodyAssessments : []
+  };
 }
+
+function setDatabaseStatus(message, status = "ready") {
+  const text = document.querySelector("#databaseStatus");
+  const indicator = document.querySelector("#databaseIndicator");
+  if (text) text.textContent = message;
+  if (indicator) {
+    indicator.textContent = status === "ready" ? "Ativo" : status === "error" ? "Modo reserva" : "Conectando";
+    indicator.className = `database-indicator ${status}`;
+  }
+}
+
+function requestAsPromise(request) {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("Falha no banco de dados."));
+  });
+}
+
+function transactionAsPromise(transaction) {
+  return new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error("Falha na transação."));
+    transaction.onabort = () => reject(transaction.error || new Error("Transação cancelada."));
+  });
+}
+
+function openDatabase() {
+  if (!("indexedDB" in window)) {
+    return Promise.reject(new Error("IndexedDB não disponível neste navegador."));
+  }
+
+  if (!databasePromise) {
+    databasePromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+      request.onupgradeneeded = () => {
+        const database = request.result;
+
+        if (!database.objectStoreNames.contains(APP_STORE)) {
+          database.createObjectStore(APP_STORE, { keyPath: "id" });
+        }
+
+        if (!database.objectStoreNames.contains(SET_STORE)) {
+          const store = database.createObjectStore(SET_STORE, { keyPath: "id" });
+          store.createIndex("exerciseName", "exerciseName", { unique: false });
+          store.createIndex("week", "week", { unique: false });
+          store.createIndex("date", "date", { unique: false });
+          store.createIndex("exerciseWeek", ["exerciseName", "week"], { unique: false });
+        }
+
+        if (!database.objectStoreNames.contains(BODY_STORE)) {
+          const store = database.createObjectStore(BODY_STORE, { keyPath: "id" });
+          store.createIndex("date", "date", { unique: false });
+        }
+
+        if (!database.objectStoreNames.contains(PHOTO_STORE)) {
+          const store = database.createObjectStore(PHOTO_STORE, { keyPath: "id" });
+          store.createIndex("assessmentId", "assessmentId", { unique: false });
+          store.createIndex("position", "position", { unique: false });
+        }
+      };
+
+      request.onsuccess = () => {
+        const database = request.result;
+        database.onversionchange = () => database.close();
+        resolve(database);
+      };
+
+      request.onerror = () => reject(request.error || new Error("Não foi possível abrir o banco."));
+      request.onblocked = () => reject(new Error("Atualização do banco bloqueada por outra aba."));
+    });
+  }
+
+  return databasePromise;
+}
+
+function buildSetRecords(snapshot) {
+  const records = [];
+
+  PLAN.workouts.forEach(workout => {
+    workout.exercises.forEach((exercise, exerciseIndex) => {
+      const [exerciseName] = exercise;
+
+      for (let week = 1; week <= 6; week++) {
+        const exerciseKey = key(week, workout.id, exerciseIndex);
+        const log = snapshot.exercises?.[exerciseKey];
+        if (!log) continue;
+
+        const sets = Array.isArray(log.sets)
+          ? log.sets
+          : [{
+              load: log.load || "",
+              reps: log.reps || "",
+              rpe: log.rpe || "",
+              done: Boolean(log.done),
+              completedAt: log.date || ""
+            }];
+
+        sets.forEach((set, setIndex) => {
+          if (!set.load && !set.reps && !set.rpe && !set.done) return;
+
+          records.push({
+            id: `${exerciseKey}|${setIndex}`,
+            week,
+            workoutId: workout.id,
+            exerciseIndex,
+            exerciseName,
+            setIndex,
+            load: Number(set.load) || 0,
+            reps: String(set.reps || ""),
+            rpe: Number(set.rpe) || 0,
+            done: Boolean(set.done),
+            date: log.date || String(set.completedAt || "").slice(0, 10) || "",
+            completedAt: set.completedAt || ""
+          });
+        });
+      }
+    });
+  });
+
+  return records;
+}
+
+async function persistStateToDatabase(snapshot) {
+  const database = await openDatabase();
+  const transaction = database.transaction([APP_STORE, SET_STORE, BODY_STORE], "readwrite");
+  const appStore = transaction.objectStore(APP_STORE);
+  const setStore = transaction.objectStore(SET_STORE);
+  const bodyStore = transaction.objectStore(BODY_STORE);
+
+  appStore.put({
+    id: "main",
+    value: snapshot,
+    updatedAt: new Date().toISOString()
+  });
+
+  setStore.clear();
+  buildSetRecords(snapshot).forEach(record => setStore.put(record));
+
+  bodyStore.clear();
+  (snapshot.bodyAssessments || []).forEach(record => bodyStore.put(record));
+
+  await transactionAsPromise(transaction);
+  setDatabaseStatus(`Salvo automaticamente em ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}.`, "ready");
+}
+
+async function loadState() {
+  let localBackup = null;
+
+  try {
+    localBackup = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+  } catch {
+    localBackup = null;
+  }
+
+  try {
+    setDatabaseStatus("Abrindo o banco de dados local...", "loading");
+    const database = await openDatabase();
+    const transaction = database.transaction(APP_STORE, "readonly");
+    const record = await requestAsPromise(transaction.objectStore(APP_STORE).get("main"));
+
+    if (record?.value) {
+      setDatabaseStatus("Banco de dados carregado. O preenchimento é salvo automaticamente.", "ready");
+      return normalizeState(record.value);
+    }
+
+    const migrated = normalizeState(localBackup || defaultState);
+    await persistStateToDatabase(structuredClone(migrated));
+    setDatabaseStatus(
+      localBackup
+        ? "Dados anteriores migrados para o banco IndexedDB."
+        : "Banco de dados criado e pronto para uso.",
+      "ready"
+    );
+    return migrated;
+  } catch (error) {
+    console.error(error);
+    setDatabaseStatus("IndexedDB indisponível. Salvando em modo de reserva no navegador.", "error");
+    return normalizeState(localBackup || defaultState);
+  }
+}
+
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  const snapshot = structuredClone(state);
+
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+  } catch (error) {
+    console.warn("Não foi possível atualizar a cópia de reserva.", error);
+  }
+
+  saveQueue = saveQueue
+    .then(() => persistStateToDatabase(snapshot))
+    .catch(error => {
+      console.error(error);
+      setDatabaseStatus("Falha no IndexedDB. A cópia de reserva local continua ativa.", "error");
+    });
+
   renderStats();
 }
+
+async function clearDatabase() {
+  try {
+    const database = await openDatabase();
+    const transaction = database.transaction([APP_STORE, SET_STORE, BODY_STORE, PHOTO_STORE], "readwrite");
+    transaction.objectStore(APP_STORE).clear();
+    transaction.objectStore(SET_STORE).clear();
+    transaction.objectStore(BODY_STORE).clear();
+    transaction.objectStore(PHOTO_STORE).clear();
+    await transactionAsPromise(transaction);
+  } catch (error) {
+    console.warn("Não foi possível limpar o IndexedDB.", error);
+  }
+}
+
 function key(...parts) { return parts.join("|"); }
 function todayISO() { return new Date().toISOString().slice(0,10); }
 function escapeHTML(value="") {
@@ -98,6 +326,7 @@ function init() {
   document.documentElement.dataset.theme = state.theme;
   $("#recoveryDate").value = todayISO();
   $("#measureDate").value = todayISO();
+  $("#assessmentDate").value = todayISO();
 
   PLAN.workouts.forEach(w => {
     $("#workoutSelect").insertAdjacentHTML("beforeend", `<option value="${w.id}">${w.day} — ${w.title}</option>`);
@@ -119,6 +348,7 @@ function renderAll() {
   renderRecoveryHistory();
   renderMeasures();
   renderProgressCharts();
+  renderBodyAssessments();
   renderStats();
 }
 
@@ -132,6 +362,7 @@ function bindTabs() {
     $$(".tab").forEach(b => b.classList.toggle("active", b === btn));
     $$(".tab-panel").forEach(p => p.classList.toggle("active", p.id === btn.dataset.tab));
     if (btn.dataset.tab === "evolucao") renderProgressCharts();
+    if (btn.dataset.tab === "avaliacao") renderBodyAssessments();
   }));
 }
 
@@ -158,6 +389,14 @@ function bindControls() {
   $("#saveRecoveryBtn").addEventListener("click", () => saveRecovery(false));
   $("#markRestBtn").addEventListener("click", () => saveRecovery(true));
   $("#saveMeasureBtn").addEventListener("click", saveMeasure);
+
+  $("#toggleGuideBtn").addEventListener("click", toggleMeasurementGuide);
+  $("#saveAssessmentBtn").addEventListener("click", saveBodyAssessment);
+  $("#clearAssessmentBtn").addEventListener("click", clearBodyAssessmentForm);
+  bindPhotoPreview("photoFront", "previewFront");
+  bindPhotoPreview("photoSide", "previewSide");
+  bindPhotoPreview("photoBack", "previewBack");
+
   $("#exportBtn").addEventListener("click", exportData);
   $("#importInput").addEventListener("change", importData);
   $("#eraseBtn").addEventListener("click", eraseAll);
@@ -458,24 +697,653 @@ function renderMeasures() {
   }));
 }
 
+
+const BODY_MEASUREMENT_FIELDS = [
+  ["weight", "Peso", "kg"],
+  ["chest", "Tórax/busto", "cm"],
+  ["waist", "Cintura", "cm"],
+  ["abdomen", "Abdômen", "cm"],
+  ["hips", "Quadril", "cm"],
+  ["armRight", "Braço direito", "cm"],
+  ["armLeft", "Braço esquerdo", "cm"],
+  ["thighRight", "Coxa direita", "cm"],
+  ["thighLeft", "Coxa esquerda", "cm"],
+  ["calfRight", "Panturrilha direita", "cm"],
+  ["calfLeft", "Panturrilha esquerda", "cm"]
+];
+
+const BODY_INPUTS = {
+  weight: "assessmentWeight",
+  height: "assessmentHeight",
+  chest: "assessmentChest",
+  waist: "assessmentWaist",
+  abdomen: "assessmentAbdomen",
+  hips: "assessmentHips",
+  armRight: "assessmentArmRight",
+  armLeft: "assessmentArmLeft",
+  thighRight: "assessmentThighRight",
+  thighLeft: "assessmentThighLeft",
+  calfRight: "assessmentCalfRight",
+  calfLeft: "assessmentCalfLeft"
+};
+
+let activeAssessmentPhotoUrls = [];
+let bodyRenderToken = 0;
+
+function toggleMeasurementGuide() {
+  const details = $("#measurementGuideDetails");
+  const button = $("#toggleGuideBtn");
+  details.hidden = !details.hidden;
+  button.textContent = details.hidden ? "Ver guia completo" : "Ocultar guia";
+}
+
+function bindPhotoPreview(inputId, previewId) {
+  const input = $(`#${inputId}`);
+  const preview = $(`#${previewId}`);
+
+  input.addEventListener("change", () => {
+    const previousUrl = preview.dataset.objectUrl;
+    if (previousUrl) URL.revokeObjectURL(previousUrl);
+
+    const file = input.files?.[0];
+    if (!file) {
+      preview.innerHTML = "<span>Nenhuma foto</span>";
+      delete preview.dataset.objectUrl;
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      input.value = "";
+      preview.innerHTML = "<span>Arquivo inválido</span>";
+      alert("Selecione um arquivo de imagem.");
+      return;
+    }
+
+    const url = URL.createObjectURL(file);
+    preview.dataset.objectUrl = url;
+    preview.innerHTML = `<img src="${url}" alt="Prévia da foto selecionada">`;
+  });
+}
+
+function clearPhotoPreview(inputId, previewId) {
+  const input = $(`#${inputId}`);
+  const preview = $(`#${previewId}`);
+  const url = preview.dataset.objectUrl;
+  if (url) URL.revokeObjectURL(url);
+  input.value = "";
+  preview.innerHTML = "<span>Nenhuma foto</span>";
+  delete preview.dataset.objectUrl;
+}
+
+function clearBodyAssessmentForm() {
+  Object.values(BODY_INPUTS).forEach(id => {
+    $(`#${id}`).value = "";
+  });
+  $("#assessmentDate").value = todayISO();
+  $("#assessmentNotes").value = "";
+  clearPhotoPreview("photoFront", "previewFront");
+  clearPhotoPreview("photoSide", "previewSide");
+  clearPhotoPreview("photoBack", "previewBack");
+}
+
+function numericInput(id) {
+  const value = Number($(`#${id}`).value);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+async function imageElementFromFile(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    image.decoding = "async";
+    image.src = url;
+    await image.decode();
+    return image;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function compressPhoto(file) {
+  const maxSide = 1600;
+  let source;
+  let width;
+  let height;
+  let cleanup = () => {};
+
+  if ("createImageBitmap" in window) {
+    try {
+      source = await createImageBitmap(file);
+      width = source.width;
+      height = source.height;
+      cleanup = () => source.close?.();
+    } catch {
+      source = await imageElementFromFile(file);
+      width = source.naturalWidth;
+      height = source.naturalHeight;
+    }
+  } else {
+    source = await imageElementFromFile(file);
+    width = source.naturalWidth;
+    height = source.naturalHeight;
+  }
+
+  const scale = Math.min(1, maxSide / Math.max(width, height));
+  const outputWidth = Math.max(1, Math.round(width * scale));
+  const outputHeight = Math.max(1, Math.round(height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = outputWidth;
+  canvas.height = outputHeight;
+
+  const context = canvas.getContext("2d");
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, outputWidth, outputHeight);
+  context.drawImage(source, 0, 0, outputWidth, outputHeight);
+  cleanup();
+
+  const blob = await new Promise((resolve, reject) => {
+    canvas.toBlob(
+      value => value ? resolve(value) : reject(new Error("Não foi possível processar a foto.")),
+      "image/jpeg",
+      0.82
+    );
+  });
+
+  return blob;
+}
+
+async function saveAssessmentPhotos(assessmentId, photoFiles) {
+  const entries = Object.entries(photoFiles).filter(([, file]) => file);
+  if (!entries.length) return [];
+
+  const processed = [];
+  for (const [position, file] of entries) {
+    const blob = await compressPhoto(file);
+    processed.push({
+      id: `${assessmentId}|${position}`,
+      assessmentId,
+      position,
+      blob,
+      mimeType: blob.type,
+      originalName: file.name,
+      savedAt: new Date().toISOString()
+    });
+  }
+
+  const database = await openDatabase();
+  const transaction = database.transaction(PHOTO_STORE, "readwrite");
+  const store = transaction.objectStore(PHOTO_STORE);
+  processed.forEach(record => store.put(record));
+  await transactionAsPromise(transaction);
+  return processed.map(record => record.position);
+}
+
+async function getAssessmentPhotos(assessmentId) {
+  const database = await openDatabase();
+  const transaction = database.transaction(PHOTO_STORE, "readonly");
+  const index = transaction.objectStore(PHOTO_STORE).index("assessmentId");
+  return requestAsPromise(index.getAll(IDBKeyRange.only(assessmentId)));
+}
+
+async function getAllAssessmentPhotos() {
+  const database = await openDatabase();
+  const transaction = database.transaction(PHOTO_STORE, "readonly");
+  return requestAsPromise(transaction.objectStore(PHOTO_STORE).getAll());
+}
+
+async function deleteAssessmentPhotos(assessmentId) {
+  const records = await getAssessmentPhotos(assessmentId);
+  if (!records.length) return;
+
+  const database = await openDatabase();
+  const transaction = database.transaction(PHOTO_STORE, "readwrite");
+  const store = transaction.objectStore(PHOTO_STORE);
+  records.forEach(record => store.delete(record.id));
+  await transactionAsPromise(transaction);
+}
+
+async function saveBodyAssessment() {
+  const button = $("#saveAssessmentBtn");
+  const date = $("#assessmentDate").value || todayISO();
+  const measurements = {};
+
+  Object.entries(BODY_INPUTS).forEach(([key, inputId]) => {
+    measurements[key] = numericInput(inputId);
+  });
+
+  const photoFiles = {
+    front: $("#photoFront").files?.[0] || null,
+    side: $("#photoSide").files?.[0] || null,
+    back: $("#photoBack").files?.[0] || null
+  };
+
+  const hasMeasurement = Object.values(measurements).some(Boolean);
+  const hasPhoto = Object.values(photoFiles).some(Boolean);
+
+  if (!hasMeasurement && !hasPhoto) {
+    alert("Preencha pelo menos uma medida ou selecione uma foto.");
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = "Salvando...";
+
+  const assessment = {
+    id: crypto.randomUUID(),
+    date,
+    createdAt: new Date().toISOString(),
+    measurements,
+    notes: $("#assessmentNotes").value.trim(),
+    photoPositions: []
+  };
+
+  try {
+    assessment.photoPositions = await saveAssessmentPhotos(assessment.id, photoFiles);
+    state.bodyAssessments.push(assessment);
+    state.bodyAssessments.sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt));
+    saveState();
+    await saveQueue;
+    clearBodyAssessmentForm();
+    await renderBodyAssessments();
+    alert("Avaliação completa salva no banco de dados deste aparelho.");
+  } catch (error) {
+    console.error(error);
+    await deleteAssessmentPhotos(assessment.id).catch(() => {});
+    alert("Não foi possível salvar a avaliação. Verifique o espaço disponível no navegador.");
+  } finally {
+    button.disabled = false;
+    button.textContent = "Salvar avaliação completa";
+  }
+}
+
+function bodyValue(record, key) {
+  const value = Number(record?.measurements?.[key]);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function bodyDelta(current, previous) {
+  if (!Number.isFinite(current) || !Number.isFinite(previous) || previous === 0) return null;
+  return {
+    absolute: current - previous,
+    percent: ((current - previous) / previous) * 100
+  };
+}
+
+function formatSigned(value, digits = 1) {
+  const rounded = Math.abs(value) < 0.05 ? 0 : value;
+  const sign = rounded > 0 ? "+" : "";
+  return `${sign}${formatNumber(rounded, digits)}`;
+}
+
+function renderBodyComparison(records) {
+  const container = $("#bodyComparison");
+  const badge = $("#bodyComparisonBadge");
+
+  if (records.length < 2) {
+    badge.textContent = records.length === 1 ? "Falta 1 avaliação" : "Aguardando dados";
+    badge.className = "assessment-badge neutral";
+    container.innerHTML = `<div class="assessment-empty">${
+      records.length === 1
+        ? "A primeira avaliação foi salva. Registre outra nas mesmas condições para gerar a comparação."
+        : "Salve pelo menos duas avaliações para comparar peso e circunferências."
+    }</div>`;
+    return;
+  }
+
+  const previous = records[records.length - 2];
+  const current = records[records.length - 1];
+  const comparable = BODY_MEASUREMENT_FIELDS
+    .map(([key, label, unit]) => {
+      const before = bodyValue(previous, key);
+      const after = bodyValue(current, key);
+      const delta = bodyDelta(after, before);
+      return delta ? { key, label, unit, before, after, ...delta } : null;
+    })
+    .filter(Boolean);
+
+  badge.textContent = `${comparable.length} medidas comparadas`;
+  badge.className = "assessment-badge mixed";
+
+  if (!comparable.length) {
+    container.innerHTML = `<div class="assessment-empty">As duas avaliações não possuem medidas equivalentes para comparação.</div>`;
+    return;
+  }
+
+  const cards = comparable.map(item => {
+    const directionClass = item.absolute > 0 ? "delta-positive" : item.absolute < 0 ? "delta-negative" : "delta-neutral";
+    return `<div class="assessment-metric">
+      <span>${item.label}</span>
+      <strong>${formatNumber(item.after)} ${item.unit}</strong>
+      <small class="${directionClass}">
+        ${formatSigned(item.absolute)} ${item.unit} (${formatSigned(item.percent)}%)
+      </small>
+      <small>Anterior: ${formatNumber(item.before)} ${item.unit}</small>
+    </div>`;
+  }).join("");
+
+  const waist = bodyValue(current, "waist");
+  const hips = bodyValue(current, "hips");
+  const ratio = waist && hips ? waist / hips : null;
+
+  container.innerHTML = `
+    <div class="assessment-grid body-metrics-grid">${cards}</div>
+    <div class="assessment-summary">
+      <strong>${formatDate(previous.date)} → ${formatDate(current.date)}</strong>
+      As setas mostram apenas a direção da mudança, não classificam automaticamente aumento ou redução como bom ou ruim.
+      ${ratio ? ` Relação cintura/quadril atual: <strong>${formatNumber(ratio, 2)}</strong>.` : ""}
+    </div>
+  `;
+}
+
+function measurementSummaryHTML(assessment) {
+  const items = [
+    ["height", "Altura", "cm"],
+    ...BODY_MEASUREMENT_FIELDS
+  ].map(([key, label, unit]) => {
+    const value = bodyValue(assessment, key);
+    return value ? `<div><span>${label}</span><strong>${formatNumber(value)} ${unit}</strong></div>` : "";
+  }).join("");
+
+  return items || "<p>Nenhuma medida numérica registrada.</p>";
+}
+
+function releaseAssessmentPhotoUrls() {
+  activeAssessmentPhotoUrls.forEach(url => URL.revokeObjectURL(url));
+  activeAssessmentPhotoUrls = [];
+}
+
+async function renderBodyAssessments() {
+  const token = ++bodyRenderToken;
+  const records = [...(state.bodyAssessments || [])]
+    .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt));
+
+  renderBodyComparison(records);
+  releaseAssessmentPhotoUrls();
+
+  const history = $("#bodyAssessmentHistory");
+  if (!records.length) {
+    history.innerHTML = `<div class="note">Nenhuma avaliação física salva ainda.</div>`;
+    return;
+  }
+
+  history.innerHTML = records.slice().reverse().map(assessment => `
+    <article class="card body-history-card" data-assessment-id="${assessment.id}">
+      <div class="body-history-head">
+        <div>
+          <p class="eyebrow">AVALIAÇÃO</p>
+          <h3>${formatDate(assessment.date)}</h3>
+          <p>${assessment.notes ? escapeHTML(assessment.notes) : "Sem observações."}</p>
+        </div>
+        <button type="button" class="danger-btn delete-body-assessment" data-id="${assessment.id}">Excluir</button>
+      </div>
+
+      <div class="body-measurement-summary">${measurementSummaryHTML(assessment)}</div>
+
+      <div class="saved-photo-grid">
+        ${["front", "side", "back"].map(position => `
+          <div class="saved-photo" data-position="${position}">
+            <span>${position === "front" ? "Frente" : position === "side" ? "Perfil" : "Costas"}</span>
+            <div class="saved-photo-frame"><small>Sem foto</small></div>
+          </div>
+        `).join("")}
+      </div>
+    </article>
+  `).join("");
+
+  $$(".delete-body-assessment").forEach(button => {
+    button.addEventListener("click", async () => {
+      if (!confirm("Excluir esta avaliação e todas as fotos associadas?")) return;
+      const id = button.dataset.id;
+      await deleteAssessmentPhotos(id).catch(console.error);
+      state.bodyAssessments = state.bodyAssessments.filter(item => item.id !== id);
+      saveState();
+      await renderBodyAssessments();
+    });
+  });
+
+  for (const assessment of records) {
+    if (token !== bodyRenderToken) return;
+
+    let photos = [];
+    try {
+      photos = await getAssessmentPhotos(assessment.id);
+    } catch (error) {
+      console.error(error);
+    }
+
+    if (token !== bodyRenderToken) return;
+    const card = history.querySelector(`[data-assessment-id="${assessment.id}"]`);
+    if (!card) continue;
+
+    photos.forEach(photo => {
+      const frame = card.querySelector(`[data-position="${photo.position}"] .saved-photo-frame`);
+      if (!frame || !photo.blob) return;
+
+      const url = URL.createObjectURL(photo.blob);
+      activeAssessmentPhotoUrls.push(url);
+      frame.innerHTML = `<img src="${url}" alt="Foto de evolução: ${photo.position === "front" ? "frente" : photo.position === "side" ? "perfil" : "costas"}">`;
+    });
+  }
+}
+
+function parseRepCount(value) {
+  const normalized = String(value ?? "").trim().replace(",", ".");
+  const match = normalized.match(/\d+(?:\.\d+)?/);
+  return match ? Number(match[0]) : 0;
+}
+
+function percentChange(current, previous) {
+  if (!previous) return current ? 100 : 0;
+  return ((current - previous) / previous) * 100;
+}
+
+function formatNumber(value, maximumFractionDigits = 1) {
+  return new Intl.NumberFormat("pt-BR", { maximumFractionDigits }).format(value || 0);
+}
+
+function formatDelta(value) {
+  const rounded = Math.abs(value) < 0.05 ? 0 : value;
+  const sign = rounded > 0 ? "+" : "";
+  return `${sign}${formatNumber(rounded, 1)}%`;
+}
+
+function deltaClass(value, positiveThreshold = 0.5, negativeThreshold = -0.5) {
+  if (value >= positiveThreshold) return "delta-positive";
+  if (value <= negativeThreshold) return "delta-negative";
+  return "delta-neutral";
+}
+
+function getExerciseMetrics(exerciseName) {
+  const metrics = [];
+
+  PLAN.workouts.forEach(workout => {
+    workout.exercises.forEach((exercise, exerciseIndex) => {
+      if (exercise[0] !== exerciseName) return;
+
+      for (let week = 1; week <= 6; week++) {
+        const log = state.exercises[key(week, workout.id, exerciseIndex)];
+        if (!log) continue;
+
+        const sets = Array.isArray(log.sets)
+          ? log.sets
+          : [{
+              load: log.load || "",
+              reps: log.reps || "",
+              rpe: log.rpe || "",
+              done: Boolean(log.done)
+            }];
+
+        const validSets = sets
+          .map(set => ({
+            load: Number(set.load) || 0,
+            reps: parseRepCount(set.reps),
+            rpe: Number(set.rpe) || 0,
+            done: Boolean(set.done)
+          }))
+          .filter(set => set.done && set.load > 0 && set.reps > 0);
+
+        if (!validSets.length) continue;
+
+        const totalReps = validSets.reduce((sum, set) => sum + set.reps, 0);
+        const totalVolume = validSets.reduce((sum, set) => sum + (set.load * set.reps), 0);
+        const rpeValues = validSets.map(set => set.rpe).filter(value => value > 0);
+
+        metrics.push({
+          week,
+          label: `Semana ${week}`,
+          shortLabel: `S${week}`,
+          date: log.date || "",
+          setCount: validSets.length,
+          maxLoad: Math.max(...validSets.map(set => set.load)),
+          averageLoad: validSets.reduce((sum, set) => sum + set.load, 0) / validSets.length,
+          totalReps,
+          averageReps: totalReps / validSets.length,
+          totalVolume,
+          averageRpe: rpeValues.length
+            ? rpeValues.reduce((sum, value) => sum + value, 0) / rpeValues.length
+            : 0
+        });
+      }
+    });
+  });
+
+  return metrics.sort((a, b) => a.week - b.week);
+}
+
+function evaluateProgress(previous, current) {
+  const loadDelta = percentChange(current.maxLoad, previous.maxLoad);
+  const repsDelta = percentChange(current.totalReps, previous.totalReps);
+  const averageRepsDelta = percentChange(current.averageReps, previous.averageReps);
+  const volumeDelta = percentChange(current.totalVolume, previous.totalVolume);
+
+  let type = "neutral";
+  let title = "Desempenho estável";
+  let message = "A variação ficou pequena. Mantenha a execução e busque melhorar uma repetição por série antes de aumentar a carga.";
+
+  if (loadDelta >= 2 && averageRepsDelta >= -5) {
+    type = "positive";
+    title = "Progressão de carga positiva";
+    message = "A carga aumentou sem uma queda relevante nas repetições médias. Isso indica evolução consistente.";
+  } else if (Math.abs(loadDelta) < 2 && averageRepsDelta >= 5) {
+    type = "positive";
+    title = "Mais repetições com carga semelhante";
+    message = "Ela realizou mais repetições por série mantendo praticamente a mesma carga.";
+  } else if (volumeDelta >= 5) {
+    type = "positive";
+    title = "Volume de treino aumentou";
+    message = "O trabalho total em quilogramas-repetições aumentou, mesmo sem grande mudança na carga máxima.";
+  } else if (loadDelta >= 2 && averageRepsDelta < -5 && volumeDelta > -5) {
+    type = "mixed";
+    title = "Carga maior com menos repetições";
+    message = "A carga subiu, mas as repetições médias caíram. O volume ficou próximo; mantenha a carga até recuperar as repetições.";
+  } else if (volumeDelta <= -10 || (loadDelta <= -5 && averageRepsDelta <= -5)) {
+    type = "negative";
+    title = "Queda de desempenho observada";
+    message = "Carga, repetições ou volume diminuíram de forma relevante. Repita a sessão sem aumentar a carga e confira sono, dores e recuperação.";
+  } else if (averageRepsDelta >= 3 || loadDelta >= 1) {
+    type = "mixed";
+    title = "Pequena evolução";
+    message = "Há melhora discreta. Consolide a técnica e mantenha a progressão gradual.";
+  }
+
+  if (current.averageRpe >= 8.5 && type === "positive") {
+    message += " Como o RPE médio está alto, não aumente novamente a carga na próxima sessão.";
+  } else if (current.averageRpe > 0 && current.averageRpe <= 7.5 && type === "positive") {
+    message += " Com RPE controlado, é possível tentar uma pequena progressão na próxima sessão.";
+  }
+
+  return { type, title, message, loadDelta, repsDelta, averageRepsDelta, volumeDelta };
+}
+
+function renderProgressAssessment(exerciseName, metrics) {
+  const container = $("#progressAssessment");
+  const badge = $("#assessmentBadge");
+  if (!container || !badge) return;
+
+  if (metrics.length < 2) {
+    badge.textContent = metrics.length === 1 ? "Falta 1 sessão" : "Aguardando dados";
+    badge.className = "assessment-badge neutral";
+    container.innerHTML = `<div class="assessment-empty">
+      ${metrics.length === 1
+        ? `Já existe uma sessão completa de <strong>${escapeHTML(exerciseName)}</strong>. Registre outra sessão para comparar carga e repetições.`
+        : `Marque as séries como concluídas e preencha carga e repetições em pelo menos duas semanas de <strong>${escapeHTML(exerciseName)}</strong>.`}
+    </div>`;
+    return;
+  }
+
+  const previous = metrics[metrics.length - 2];
+  const current = metrics[metrics.length - 1];
+  const evaluation = evaluateProgress(previous, current);
+
+  badge.textContent = evaluation.title;
+  badge.className = `assessment-badge ${evaluation.type}`;
+
+  const historyRows = metrics.slice().reverse().map(item => `
+    <tr>
+      <td>${item.label}</td>
+      <td>${formatNumber(item.maxLoad)} kg</td>
+      <td>${formatNumber(item.totalReps, 0)}</td>
+      <td>${formatNumber(item.averageReps, 1)}</td>
+      <td>${formatNumber(item.totalVolume, 0)} kg·rep</td>
+      <td>${item.averageRpe ? formatNumber(item.averageRpe, 1) : "—"}</td>
+    </tr>
+  `).join("");
+
+  container.innerHTML = `
+    <div class="assessment-grid">
+      <div class="assessment-metric">
+        <span>Carga máxima</span>
+        <strong>${formatNumber(current.maxLoad)} kg</strong>
+        <small class="${deltaClass(evaluation.loadDelta)}">${formatDelta(evaluation.loadDelta)} vs. ${previous.label.toLowerCase()}</small>
+      </div>
+      <div class="assessment-metric">
+        <span>Repetições totais</span>
+        <strong>${formatNumber(current.totalReps, 0)}</strong>
+        <small class="${deltaClass(evaluation.repsDelta)}">${formatDelta(evaluation.repsDelta)} vs. ${previous.label.toLowerCase()}</small>
+      </div>
+      <div class="assessment-metric">
+        <span>Média por série</span>
+        <strong>${formatNumber(current.averageReps, 1)} reps</strong>
+        <small class="${deltaClass(evaluation.averageRepsDelta)}">${formatDelta(evaluation.averageRepsDelta)} vs. ${previous.label.toLowerCase()}</small>
+      </div>
+      <div class="assessment-metric">
+        <span>Volume total</span>
+        <strong>${formatNumber(current.totalVolume, 0)} kg·rep</strong>
+        <small class="${deltaClass(evaluation.volumeDelta)}">${formatDelta(evaluation.volumeDelta)} vs. ${previous.label.toLowerCase()}</small>
+      </div>
+    </div>
+    <div class="assessment-summary">
+      <strong>${evaluation.title}</strong>
+      ${evaluation.message}
+    </div>
+    <div class="assessment-history">
+      <h4>Histórico do exercício</h4>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Semana</th><th>Carga máx.</th><th>Reps totais</th><th>Reps/série</th><th>Volume</th><th>RPE médio</th></tr>
+          </thead>
+          <tbody>${historyRows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
 function renderProgressCharts() {
   const exercise = $("#progressExercise").value;
-  const points = [];
-  PLAN.workouts.forEach(w => w.exercises.forEach((e,i) => {
-    if (e[0] !== exercise) return;
-    for (let week=1; week<=6; week++) {
-      const log = state.exercises[key(week,w.id,i)];
-      if (Array.isArray(log?.sets)) {
-        const loads = log.sets.map(set => Number(set.load)).filter(value => value > 0);
-        if (loads.length) points.push({label:`S${week}`, value:Math.max(...loads)});
-      } else if (log?.load) {
-        points.push({label:`S${week}`, value:Number(log.load)});
-      }
-    }
+  const metrics = getExerciseMetrics(exercise);
+
+  renderProgressAssessment(exercise, metrics);
+
+  const points = metrics.map(item => ({
+    label: item.shortLabel,
+    value: item.maxLoad
   }));
   $("#strengthChart").innerHTML = svgLine(points, "kg");
+
   const runPoints = [];
-  for (let week=1; week<=6; week++) {
+  for (let week = 1; week <= 6; week++) {
     ["A","B"].forEach(type => {
       const distance = Number(state.runs[key(week,type,"distance")]);
       if (distance) runPoints.push({label:`S${week}${type}`, value:distance});
@@ -483,6 +1351,7 @@ function renderProgressCharts() {
   }
   $("#runChart").innerHTML = svgLine(runPoints, "km");
 }
+
 function svgLine(points, unit) {
   if (!points.length) return `<div class="note">Registre dados para visualizar a evolução.</div>`;
   const w=620,h=230,p=34,max=Math.max(...points.map(x=>x.value),1),min=Math.min(...points.map(x=>x.value),0);
@@ -620,22 +1489,139 @@ function resetWeek() {
   });
   saveState(); renderAll();
 }
-function exportData() {
-  const blob = new Blob([JSON.stringify(state,null,2)], {type:"application/json"});
-  const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
-  a.download=`backup-treino-${todayISO()}.json`; a.click(); URL.revokeObjectURL(a.href);
+function blobToDataURL(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error || new Error("Falha ao ler a foto."));
+    reader.readAsDataURL(blob);
+  });
 }
-function importData(e) {
-  const file=e.target.files[0]; if (!file) return;
-  const reader=new FileReader();
-  reader.onload=()=>{ try { state={...structuredClone(defaultState),...JSON.parse(reader.result)}; saveState(); renderAll(); alert("Backup importado."); } catch { alert("Arquivo de backup inválido."); } };
-  reader.readAsText(file); e.target.value="";
+
+function dataURLToBlob(dataURL) {
+  const [header, base64] = String(dataURL).split(",");
+  const mime = header.match(/data:([^;]+)/)?.[1] || "image/jpeg";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+  return new Blob([bytes], { type: mime });
 }
-function eraseAll() {
+
+async function exportData() {
+  const button = $("#exportBtn");
+  button.disabled = true;
+  button.textContent = "Preparando backup...";
+
+  try {
+    const photoRecords = await getAllAssessmentPhotos().catch(() => []);
+    const photos = [];
+
+    for (const record of photoRecords) {
+      photos.push({
+        id: record.id,
+        assessmentId: record.assessmentId,
+        position: record.position,
+        originalName: record.originalName || "",
+        savedAt: record.savedAt || "",
+        dataURL: await blobToDataURL(record.blob)
+      });
+    }
+
+    const payload = {
+      format: "TREINO-LYANA-BACKUP",
+      version: 3,
+      exportedAt: new Date().toISOString(),
+      state,
+      photos
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `backup-treino-lyana-${todayISO()}.json`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  } catch (error) {
+    console.error(error);
+    alert("Não foi possível criar o backup completo.");
+  } finally {
+    button.disabled = false;
+    button.textContent = "Exportar backup";
+  }
+}
+
+async function restoreImportedPhotos(photos) {
+  if (!Array.isArray(photos) || !photos.length) return;
+
+  const database = await openDatabase();
+  const transaction = database.transaction(PHOTO_STORE, "readwrite");
+  const store = transaction.objectStore(PHOTO_STORE);
+
+  photos.forEach(photo => {
+    if (!photo?.id || !photo?.dataURL) return;
+    const blob = dataURLToBlob(photo.dataURL);
+    store.put({
+      id: photo.id,
+      assessmentId: photo.assessmentId,
+      position: photo.position,
+      originalName: photo.originalName || "",
+      savedAt: photo.savedAt || new Date().toISOString(),
+      mimeType: blob.type,
+      blob
+    });
+  });
+
+  await transactionAsPromise(transaction);
+}
+
+function importData(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const parsed = JSON.parse(reader.result);
+      const importedState = parsed?.format === "TREINO-LYANA-BACKUP" ? parsed.state : parsed;
+      const importedPhotos = parsed?.format === "TREINO-LYANA-BACKUP" ? parsed.photos : [];
+
+      await clearDatabase();
+      state = normalizeState(importedState);
+      await restoreImportedPhotos(importedPhotos);
+      saveState();
+      await saveQueue;
+      renderAll();
+      alert("Backup importado, incluindo as fotos disponíveis.");
+    } catch (error) {
+      console.error(error);
+      alert("Arquivo de backup inválido ou incompleto.");
+    } finally {
+      event.target.value = "";
+    }
+  };
+  reader.readAsText(file);
+}
+
+async function eraseAll() {
   if (!confirm("Apagar definitivamente todo o histórico deste navegador?")) return;
-  localStorage.removeItem(STORAGE_KEY); state=structuredClone(defaultState); renderAll();
+
+  localStorage.removeItem(STORAGE_KEY);
+  await clearDatabase();
+  state = structuredClone(defaultState);
+  await persistStateToDatabase(structuredClone(state)).catch(() => {});
+  renderAll();
+  setDatabaseStatus("Banco de dados reiniciado. Todos os registros foram apagados.", "ready");
 }
+
 function registerServiceWorker() {
-  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("./service-worker.js").catch(()=>{});
+  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+    navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+  }
 }
-init();
+
+async function bootstrap() {
+  state = await loadState();
+  init();
+}
+
+bootstrap();
