@@ -5,6 +5,16 @@ Site estático e responsivo para registrar musculação, corrida, descanso, recu
 ## Recursos
 
 
+- Botão **Vídeo real** em cada exercício: abre um vídeo selecionado quando há fonte curada e, nos demais casos, abre uma busca específica no YouTube.
+- Botão **Tela cheia** para ampliar o GIF, dicas técnicas e acesso ao vídeo real.
+- Demonstração visual também nas sessões de corrida.
+
+
+- GIFs demonstrativos ilustrativos para os exercícios da ficha.
+- Dicas rápidas de execução dentro de cada card de exercício.
+- Arquivos locais na pasta `media/`, permitindo funcionar também no GitHub Pages e no modo instalável.
+
+
 - Seção completa de avaliação física com peso, altura e circunferências.
 - Guia de pontos anatômicos para cintura, abdômen, quadril, braços, coxas, panturrilhas e tórax/busto.
 - Registro bilateral para braços, coxas e panturrilhas.

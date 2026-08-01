@@ -405,6 +405,11 @@ function bindControls() {
   $("#plusTimer").addEventListener("click", () => adjustTimer(15));
   $("#resetTimer").addEventListener("click", resetTimer);
   $("#pauseTimer").addEventListener("click", pauseTimer);
+
+  $("#closeDemoDialog").addEventListener("click", closeDemoDialog);
+  $("#demoDialog").addEventListener("click", event => {
+    if (event.target === $("#demoDialog")) closeDemoDialog();
+  });
 }
 
 function renderStats() {
@@ -510,6 +515,7 @@ function renderWorkout() {
     const log = getExerciseLog(exerciseKey, setCount);
     const completed = log.sets.filter(set => set.done).length;
     const restSeconds = getRestSeconds(rest);
+    const demoHTML = renderExerciseDemoHTML(name);
 
     const setRows = log.sets.map((set, setIndex) => `
       <div class="set-row ${set.done ? "set-complete" : ""}" data-set-index="${setIndex}">
@@ -540,6 +546,7 @@ function renderWorkout() {
         </div>
         <span class="series-counter">${completed}/${setCount} séries</span>
       </div>
+      ${demoHTML}
       <div class="set-list">
         <div class="set-row set-header" aria-hidden="true">
           <span>Série</span><span>Carga</span><span>Repetições</span><span>RPE real</span><span>Status</span><span>Descanso</span>
@@ -593,6 +600,10 @@ function renderWorkout() {
       Number(button.dataset.totalSets)
     );
   }));
+
+  $$(".fullscreen-demo-btn").forEach(button => {
+    button.addEventListener("click", () => openDemoDialog(button.dataset.exercise));
+  });
 }
 
 function saveSessionNotes() {
@@ -624,6 +635,7 @@ function renderRuns() {
       <p class="eyebrow">RPE 4–5</p>
       <h3>${c.title}</h3>
       <div class="run-plan"><strong>${c.plan[0]}</strong><br>${c.plan[1]}<br><small>+ 5 min de caminhada antes e depois</small></div>
+      ${renderExerciseDemoHTML("Corrida leve")}
       <div class="form-grid">
         <label class="field"><span>Distância (km)</span><input data-run="${c.type}" data-prop="distance" type="number" step="0.01" value="${escapeHTML(state.runs[key(prefix,"distance")]||"")}"></label>
         <label class="field"><span>Tempo real (min)</span><input data-run="${c.type}" data-prop="minutes" type="number" step="0.1" value="${escapeHTML(state.runs[key(prefix,"minutes")]||"")}"></label>
@@ -645,6 +657,10 @@ function renderRuns() {
     if (input.checked) state.agenda[key(state.week,agendaIndex)] = "done";
     saveState(); renderAgenda(); renderProgressCharts();
   }));
+
+  $$("#runCards .fullscreen-demo-btn").forEach(button => {
+    button.addEventListener("click", () => openDemoDialog(button.dataset.exercise));
+  });
 }
 function calcPace() {
   const d = Number($("#paceDistance").value), m = Number($("#paceMinutes").value);
@@ -729,6 +745,209 @@ const BODY_INPUTS = {
 
 let activeAssessmentPhotoUrls = [];
 let bodyRenderToken = 0;
+
+const EXERCISE_DEMOS = {
+  "Agachamento no Smith para banco": {
+    gif: "media/squat.gif",
+    title: "Agachar e subir com controle",
+    cues: ["Sente no banco de forma controlada.", "Joelhos acompanham a ponta dos pés.", "Suba empurrando o chão com o meio do pé."]
+  },
+  "Leg press 45°": {
+    gif: "media/leg_press.gif",
+    title: "Empurre a plataforma sem perder a lombar",
+    cues: ["Desça até o limite sem tirar o quadril do banco.", "Empurre pela planta do pé.", "Evite estender totalmente o joelho com tranco."]
+  },
+  "Cadeira extensora": {
+    gif: "media/leg_extension.gif",
+    title: "Estenda os joelhos de forma suave",
+    cues: ["Suba até quase estender totalmente.", "Controle a volta sem deixar cair.", "Mantenha o quadríceps contraído no topo."]
+  },
+  "Afundo estático com apoio": {
+    gif: "media/lunge.gif",
+    title: "Desça na vertical com apoio",
+    cues: ["Segure o apoio para mais estabilidade.", "Dobre os dois joelhos.", "Empurre o chão para voltar."]
+  },
+  "Panturrilha no leg press": {
+    gif: "media/calf_raise.gif",
+    title: "Suba e desça pela amplitude completa",
+    cues: ["Desça o calcanhar com controle.", "Suba o máximo possível na ponta do pé.", "Sem impulso curto e rápido."]
+  },
+  "Prancha abdominal": {
+    gif: "media/plank.gif",
+    title: "Tronco firme e alinhado",
+    cues: ["Contraia abdômen e glúteos.", "Evite deixar a lombar cair.", "Respire sem prender o ar."]
+  },
+  "Puxada frontal na polia": {
+    gif: "media/pulldown.gif",
+    title: "Puxe a barra até a parte alta do peito",
+    cues: ["Comece com ombros longe das orelhas.", "Puxe com cotovelos para baixo.", "Suba controlando a volta."]
+  },
+  "Remada baixa sentada": {
+    gif: "media/row.gif",
+    title: "Traga o cabo ao tronco",
+    cues: ["Peito aberto e ombros para trás.", "Puxe com cotovelos próximos ao corpo.", "Retorne sem perder a postura."]
+  },
+  "Supino na máquina": {
+    gif: "media/chest_press.gif",
+    title: "Empurre para frente mantendo controle",
+    cues: ["Escápulas apoiadas no banco.", "Empurre até quase estender os cotovelos.", "Volte devagar até alongar o peitoral."]
+  },
+  "Elevação lateral": {
+    gif: "media/lateral_raise.gif",
+    title: "Eleve os braços até a linha dos ombros",
+    cues: ["Cotovelos levemente flexionados.", "Suba sem encolher o ombro.", "Desça controlando o peso."]
+  },
+  "Tríceps na polia": {
+    gif: "media/triceps_pushdown.gif",
+    title: "Empurre para baixo usando o tríceps",
+    cues: ["Cotovelos fixos ao lado do corpo.", "Estenda totalmente no final.", "Suba sem abrir demais os cotovelos."]
+  },
+  "Rosca na polia ou máquina": {
+    gif: "media/curl.gif",
+    title: "Flexione os cotovelos sem balançar",
+    cues: ["Mantenha o tronco parado.", "Suba contraindo bíceps.", "Desça devagar."]
+  },
+  "Terra romeno com halteres": {
+    gif: "media/hinge.gif",
+    title: "Leve o quadril para trás",
+    cues: ["Joelhos levemente flexionados.", "Halteres próximos às pernas.", "Suba apertando glúteos."]
+  },
+  "Mesa flexora": {
+    gif: "media/leg_curl.gif",
+    title: "Flexione os joelhos com controle",
+    cues: ["Puxe os calcanhares em direção aos glúteos.", "Segure um instante no topo.", "Volte devagar."]
+  },
+  "Elevação pélvica na máquina ou Smith": {
+    gif: "media/hip_thrust.gif",
+    title: "Suba o quadril e contraia glúteos",
+    cues: ["Queixo levemente recolhido.", "Suba até o tronco alinhar com as coxas.", "Desça controlando a lombar."]
+  },
+  "Leg press com pés mais altos": {
+    gif: "media/leg_press.gif",
+    title: "Pés mais altos para ênfase posterior",
+    cues: ["Mantenha os pés mais altos na plataforma.", "Desça sem tirar o quadril do assento.", "Empurre sem travar joelhos."]
+  },
+  "Cadeira flexora unilateral": {
+    gif: "media/leg_curl.gif",
+    title: "Flexão unilateral com simetria",
+    cues: ["Faça o movimento completo em cada perna.", "Evite compensar com o quadril.", "Mantenha o mesmo ritmo dos dois lados."]
+  },
+  "Abdução de quadril na máquina": {
+    gif: "media/abduction.gif",
+    title: "Abra as pernas com controle",
+    cues: ["Abra até o limite confortável.", "Segure um instante fora.", "Volte sem deixar bater."]
+  },
+  "Dead bug": {
+    gif: "media/dead_bug.gif",
+    title: "Braço e perna alternados",
+    cues: ["Lombar encostada no solo.", "Movimente devagar lados opostos.", "Expire ao estender."]
+  },
+  "Panturrilha em pé ou na máquina": {
+    gif: "media/calf_raise.gif",
+    title: "Suba nas pontas dos pés",
+    cues: ["Amplitude completa.", "Sem quicar na parte baixa.", "Pause um instante no topo."]
+  },
+  "Elevação da ponta dos pés (tibial)": {
+    gif: "media/calf_raise.gif",
+    title: "Eleve a ponta dos pés",
+    cues: ["Apoie os calcanhares.", "Puxe a ponta do pé para cima.", "Desça controlando para trabalhar tibial."]
+  },
+  "Step-down em degrau baixo": {
+    gif: "media/lunge.gif",
+    title: "Desça o pé ao chão com controle",
+    cues: ["Controle a descida sem cair.", "Joelho da perna de apoio alinhado.", "Use um degrau baixo."]
+  },
+  "Prancha lateral": {
+    gif: "media/plank.gif",
+    title: "Corpo alinhado de lado",
+    cues: ["Apoie antebraço abaixo do ombro.", "Suba o quadril e alinhe o corpo.", "Mantenha abdômen firme."]
+  }
+};
+
+EXERCISE_DEMOS["Corrida leve"] = {
+  gif: "media/run.gif",
+  title: "Passada leve e contínua",
+  cues: ["Mantenha ritmo em que ainda consegue falar frases curtas.", "Pouse o pé de forma confortável, sem forçar a passada.", "Relaxe ombros e braços e mantenha o tronco estável."]
+};
+
+function getExerciseDemo(name) {
+  return EXERCISE_DEMOS[name] || null;
+}
+
+const CURATED_REAL_VIDEOS = {
+  "Agachamento no Smith para banco": "https://www.youtube.com/watch?v=EiZnx6a0zyw",
+  "Cadeira extensora": "https://www.youtube.com/watch?v=VqBJmp1ltsk",
+  "Prancha abdominal": "https://www.youtube.com/watch?v=DoOtkRaL1BI",
+  "Supino na máquina": "https://www.youtube.com/watch?v=qmSOsrheLEg",
+  "Mesa flexora": "https://www.youtube.com/watch?v=sWSm1pWb3lw",
+  "Abdução de quadril na máquina": "https://www.youtube.com/watch?v=7izVNrHBslM",
+  "Dead bug": "https://www.nasm.org/resource-center/exercise-library/dead-bug",
+  "Prancha lateral": "https://support.runna.com/pt-BR/articles/6363965-tutorial-do-exercicio-da-prancha-lateral",
+  "Terra romeno com halteres": "https://www.hipertrofia.org/blog/2019/01/17/levantamento-terra-com-halteres/"
+};
+
+function youtubeSearchUrl(name) {
+  const query = encodeURIComponent(`${name} execução correta exercício`);
+  return `https://www.youtube.com/results?search_query=${query}`;
+}
+
+function getRealVideoUrl(name) {
+  return CURATED_REAL_VIDEOS[name] || youtubeSearchUrl(name);
+}
+
+function isCuratedVideo(name) {
+  return Boolean(CURATED_REAL_VIDEOS[name]);
+}
+
+function renderExerciseDemoHTML(name) {
+  const demo = getExerciseDemo(name);
+  if (!demo) return "";
+
+  const cues = demo.cues.map(cue => `<li>${escapeHTML(cue)}</li>`).join("");
+  const videoUrl = getRealVideoUrl(name);
+  const videoLabel = isCuratedVideo(name) ? "Assistir vídeo real" : "Buscar vídeo real";
+
+  return `<details class="exercise-demo">
+    <summary>Ver demonstração</summary>
+    <div class="exercise-demo-content">
+      <img class="exercise-demo-gif" src="${demo.gif}" alt="GIF demonstrativo do exercício ${escapeHTML(name)}">
+      <div class="exercise-demo-copy">
+        <strong>${escapeHTML(demo.title)}</strong>
+        <ul>${cues}</ul>
+        <div class="exercise-demo-actions">
+          <button type="button" class="secondary-btn fullscreen-demo-btn" data-exercise="${escapeHTML(name)}">Tela cheia</button>
+          <a class="ghost-btn real-video-btn" href="${videoUrl}" target="_blank" rel="noopener noreferrer">${videoLabel}</a>
+        </div>
+        <p class="exercise-demo-note">O GIF é ilustrativo. O vídeo real abre em uma nova aba para conferência visual da execução.</p>
+      </div>
+    </div>
+  </details>`;
+}
+
+function openDemoDialog(name) {
+  const demo = getExerciseDemo(name);
+  if (!demo) return;
+
+  $("#demoDialogTitle").textContent = name;
+  $("#demoDialogGif").src = demo.gif;
+  $("#demoDialogGif").alt = `Demonstração em GIF do exercício ${name}`;
+  $("#demoDialogCues").innerHTML = `
+    <strong>${escapeHTML(demo.title)}</strong>
+    <ul>${demo.cues.map(cue => `<li>${escapeHTML(cue)}</li>`).join("")}</ul>
+    <p>O GIF é uma referência visual simplificada. Ajuste a execução ao equipamento disponível e interrompa diante de dor aguda.</p>
+  `;
+  $("#demoDialogVideo").href = getRealVideoUrl(name);
+  $("#demoDialogVideo").textContent = isCuratedVideo(name) ? "Assistir vídeo real selecionado" : "Buscar vídeo real no YouTube";
+
+  const dialog = $("#demoDialog");
+  if (!dialog.open) dialog.showModal();
+}
+
+function closeDemoDialog() {
+  const dialog = $("#demoDialog");
+  if (dialog.open) dialog.close();
+}
+
 
 function toggleMeasurementGuide() {
   const details = $("#measurementGuideDetails");
